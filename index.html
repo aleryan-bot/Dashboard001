@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trinova Medical - Weekly Admin Dashboard v4.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --navy: #1e3a8a;
+            --light-blue: #60a5fa;
+            --gray: #6b7280;
+            --dark-gray: #374151;
+        }
+        
+        body {
+            background-color: #ffffff;
+        }
+        
+        .kpi-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .section-card {
+            background: white;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .flat-button {
+            background-color: var(--navy);
+            color: white;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        
+        .flat-button:hover:not(:disabled) {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+        
+        .flat-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .flat-select {
+            background-color: white;
+            border: 1px solid var(--navy);
+            color: var(--navy);
+            transition: all 0.2s ease;
+        }
+        
+        .flat-select:hover {
+            background-color: #f0f9ff;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 280px;
+            width: 100%;
+        }
+        
+        .trend-indicator {
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .trend-up {
+            color: #10b981;
+        }
+        
+        .trend-down {
+            color: #ef4444;
+        }
+        
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid var(--navy);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Print styles */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .section-card {
+                page-break-inside: avoid;
+            }
+            body {
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+        }
+        
+        /* Comparison mode styles */
+        .comparison-view {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        
+        @media (max-width: 1024px) {
+            .comparison-view {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: white;
+            border: 2px solid #10b981;
+            border-radius: 0.5rem;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .toast.error {
+            border-color: #ef4444;
+        }
+        
+        /* Rankings styles */
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 0.875rem;
+        }
+        
+        .rank-1 {
+            background-color: #ffd700;
+            color: #1f2937;
+        }
+        
+        .rank-2 {
+            background-color: #c0c0c0;
+            color: #1f2937;
+        }
+        
+        .rank-3 {
+            background-color: #cd7f32;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen bg-white">
+        <!-- Header -->
+        <header style="background-color: var(--navy);" class="text-white shadow-sm no-print">
+            <div class="container mx-auto px-6 py-6">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold">Trinova Medical</h1>
+                        <p class="text-blue-200 mt-1">Weekly Admin Dashboard v4.0</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xl font-bold" id="weekNumber">Week #38</p>
+                        <p class="text-sm text-blue-200" id="dateRange">Sept 15 - Sept 21</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+            <div class="bg-white rounded-lg p-8 flex flex-col items-center">
+                <div class="spinner mb-4"></div>
+                <p class="text-lg font-semibold" style="color: var(--dark-gray);" id="loadingText">Processing data...</p>
+            </div>
+        </div>
+
+        <!-- Controls Section -->
+        <div class="container mx-auto px-6 py-6 no-print">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <!-- File Upload -->
+                <div class="bg-white rounded-lg border border-gray-200 p-5">
+                    <div class="flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                            <h3 class="text-lg font-semibold" style="color: var(--dark-gray);">Data Source</h3>
+                            <p class="text-sm" style="color: var(--gray);">Upload CSV or multi-tab Excel (.xlsx) - each sheet = one week</p>
+                        </div>
+                        <div>
+                            <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleFileUpload(event)">
+                            <label for="csvFile" class="flat-button px-6 py-2.5 rounded cursor-pointer inline-block font-medium text-sm">
+                                Upload Data File
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View Selector -->
+                <div class="bg-white rounded-lg border border-gray-200 p-5">
+                    <div class="flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                            <h3 class="text-lg font-semibold" style="color: var(--dark-gray);">View Selection</h3>
+                            <p class="text-sm" style="color: var(--gray);">Choose week, monthly, or comparison view</p>
+                        </div>
+                        <div class="flex gap-3 flex-wrap">
+                            <select id="weekSelector" class="flat-select px-4 py-2.5 rounded font-medium text-sm" onchange="changeWeek()">
+                                <option value="38">Week 38</option>
+                            </select>
+                            <button onclick="showMonthlyView()" class="flat-button px-6 py-2.5 rounded font-medium text-sm">
+                                Monthly View
+                            </button>
+                            <button onclick="toggleComparisonMode()" class="px-4 py-2.5 rounded font-medium text-sm border border-gray-300 hover:bg-gray-50" style="background: white; color: var(--dark-gray);">
+                                Compare Weeks
+                            </button>
+                            <button onclick="toggleManageWeeks()" class="px-4 py-2.5 rounded font-medium text-sm border border-gray-300 hover:bg-gray-50" style="background: white; color: var(--dark-gray);">
+                                Manage Weeks
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons Row -->
+            <div class="mt-4 flex gap-3 flex-wrap">
+                <button onclick="showProviderRankings()" class="px-4 py-2.5 rounded font-medium text-sm border border-blue-300 hover:bg-blue-50" style="background: white; color: var(--navy);">
+                    Provider Rankings
+                </button>
+                <button onclick="exportToExcel()" class="px-4 py-2.5 rounded font-medium text-sm border border-green-300 hover:bg-green-50" style="background: white; color: #059669;">
+                    Export to Excel
+                </button>
+                <button onclick="printReport()" class="px-4 py-2.5 rounded font-medium text-sm border border-gray-300 hover:bg-gray-50" style="background: white; color: var(--dark-gray);">
+                    Print Report
+                </button>
+                <button onclick="clearLocalStorage()" class="px-4 py-2.5 rounded font-medium text-sm border border-red-300 hover:bg-red-50" style="background: white; color: #dc2626;">
+                    Clear Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Comparison Mode Panel -->
+        <div id="comparisonPanel" class="container mx-auto px-6 py-4" style="display: none;">
+            <div class="bg-white rounded-lg border-2 border-blue-200 p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold" style="color: var(--navy);">Week Comparison</h3>
+                    <button onclick="toggleComparisonMode()" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2" style="color: var(--dark-gray);">First Week</label>
+                        <select id="compareWeek1" class="flat-select px-4 py-2.5 rounded font-medium text-sm w-full">
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2" style="color: var(--dark-gray);">Second Week</label>
+                        <select id="compareWeek2" class="flat-select px-4 py-2.5 rounded font-medium text-sm w-full">
+                        </select>
+                    </div>
+                </div>
+                <button onclick="runComparison()" class="mt-4 flat-button px-6 py-2.5 rounded font-medium text-sm">
+                    Compare These Weeks
+                </button>
+            </div>
+        </div>
+
+        <!-- Manage Weeks Panel -->
+        <div id="manageWeeksPanel" class="container mx-auto px-6 py-4 no-print" style="display: none;">
+            <div class="bg-white rounded-lg border-2 border-blue-200 p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold" style="color: var(--navy);">Manage Loaded Weeks</h3>
+                    <button onclick="toggleManageWeeks()" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <p class="text-sm mb-4" style="color: var(--gray);">Hide weeks you don't want to see in the dashboard, or permanently delete them. Hidden weeks can be shown again later.</p>
+                <div id="weeksList" class="space-y-2">
+                    <!-- Week items will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Content -->
+        <div id="dashboardContent" class="container mx-auto px-6 py-4">
+            <!-- KPI Cards -->
+            <h2 class="text-2xl font-bold mb-5" style="color: var(--dark-gray);">Key Performance Indicators</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+                <!-- Total Visits -->
+                <div class="kpi-card bg-white rounded-lg p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <p class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--gray);">Total Visits</p>
+                            <p class="text-3xl font-bold" style="color: var(--navy);" id="totalVisits">392</p>
+                            <p class="text-xs mt-1 trend-indicator" id="visitsTrend"></p>
+                        </div>
+                        <div class="rounded-full p-2.5" style="background-color: #dbeafe;">
+                            <svg class="w-6 h-6" style="color: var(--navy);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Charges -->
+                <div class="kpi-card bg-white rounded-lg p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <p class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--gray);">Total Charges</p>
+                            <p class="text-3xl font-bold text-green-600" id="totalCharges">$71,532.12</p>
+                            <p class="text-xs mt-1 trend-indicator" id="chargesTrend"></p>
+                        </div>
+                        <div class="rounded-full p-2.5" style="background-color: #dcfce7;">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- New Patients -->
+                <div class="kpi-card bg-white rounded-lg p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <p class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--gray);">New Patients</p>
+                            <p class="text-3xl font-bold text-purple-600" id="newPatients">47</p>
+                            <p class="text-xs mt-1 trend-indicator" id="newPatientsTrend"></p>
+                        </div>
+                        <div class="rounded-full p-2.5" style="background-color: #f3e8ff;">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- No-Shows -->
+                <div class="kpi-card bg-white rounded-lg p-5">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <p class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--gray);">No-Shows</p>
+                            <p class="text-3xl font-bold text-red-600" id="noShows">12</p>
+                            <p class="text-xs mt-1 trend-indicator" id="noShowsTrend"></p>
+                        </div>
+                        <div class="rounded-full p-2.5" style="background-color: #fee2e2;">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Visits by Provider Chart -->
+                <div class="section-card p-5">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">Visits by Provider</h3>
+                    <div class="chart-container">
+                        <canvas id="visitsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Charges by Provider Chart -->
+                <div class="section-card p-5">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">Charges by Provider</h3>
+                    <div class="chart-container">
+                        <canvas id="chargesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visit Types Breakdown -->
+            <div class="section-card p-5 mb-8">
+                <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">Visit Types Distribution</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <div style="height: 320px; position: relative;">
+                            <canvas id="visitTypesChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="space-y-3" id="visitTypesStats">
+                        <!-- Stats will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Tables -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Visits Table -->
+                <div class="section-card p-5">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">Provider Performance</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead style="background-color: var(--navy);">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-white uppercase">Provider</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-white uppercase">Visits</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold text-white uppercase">Claims</th>
+                                    <th class="px-4 py-3 text-right text-xs font-semibold text-white uppercase">Charges</th>
+                                </tr>
+                            </thead>
+                            <tbody id="visitsTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Data will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Patient Acquisition -->
+                <div class="section-card p-5">
+                    <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">Patient Acquisition</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-200">
+                            <span class="text-sm font-medium" style="color: var(--dark-gray);">In-Bound Phone</span>
+                            <span class="font-bold text-lg" style="color: var(--navy);" id="inboundPhone">969</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-200">
+                            <span class="text-sm font-medium" style="color: var(--dark-gray);">Out-Bound Phone</span>
+                            <span class="font-bold text-lg" style="color: var(--navy);" id="outboundPhone">840</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-200">
+                            <span class="text-sm font-medium" style="color: var(--dark-gray);">Incoming Texts</span>
+                            <span class="font-bold text-lg" style="color: var(--light-blue);" id="incomingTexts">112</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-200">
+                            <span class="text-sm font-medium" style="color: var(--dark-gray);">Outgoing Texts</span>
+                            <span class="font-bold text-lg" style="color: var(--light-blue);" id="outgoingTexts">229</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 rounded border-2" style="background-color: #dbeafe; border-color: var(--navy);">
+                            <span class="text-sm font-bold" style="color: var(--dark-gray);">New Acquisitions</span>
+                            <span class="font-bold text-xl" style="color: var(--navy);" id="newPatientAcq">36</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Metrics -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="section-card p-5">
+                    <h3 class="text-base font-semibold mb-4" style="color: var(--dark-gray);">Referrals</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Addressed</span>
+                            <span class="font-bold text-lg text-green-600" id="referralsAddressed">31</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Open</span>
+                            <span class="font-bold text-lg text-orange-600" id="referralsOpen">22</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-2 border-t border-gray-200">
+                            <span class="text-sm font-medium" style="color: var(--dark-gray);">Total</span>
+                            <span class="font-bold text-lg" style="color: var(--dark-gray);" id="referralsTotal">53</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-card p-5">
+                    <h3 class="text-base font-semibold mb-4" style="color: var(--dark-gray);">Administrative</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Total Claims</span>
+                            <span class="font-bold text-lg" style="color: var(--navy);" id="totalClaims">359</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Faxes Processed</span>
+                            <span class="font-bold text-lg" style="color: var(--navy);" id="faxesProcessed">592</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Cancellations</span>
+                            <span class="font-bold text-lg text-red-600" id="cancellations">54</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-card p-5">
+                    <h3 class="text-base font-semibold mb-4" style="color: var(--dark-gray);">Top Visit Types</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Follow-Up</span>
+                            <span class="font-bold text-lg" style="color: var(--navy);" id="followUpVisits">286</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm" style="color: var(--gray);">Annual</span>
+                            <span class="font-bold text-lg text-green-600" id="annualVisits">23</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-gray-100 border-t border-gray-200 py-6 mt-12">
+            <div class="container mx-auto px-6 text-center">
+                <p class="font-semibold" style="color: var(--dark-gray);">&copy; 2024 Trinova Medical</p>
+                <p class="text-sm mt-1" style="color: var(--gray);">Multi-Week Dashboard v4.0 - Enhanced Edition</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Storage for all weeks data
+        let allWeeksData = {};
+        let hiddenWeeks = new Set();
+        let currentWeekNumber = 38;
+        let isMonthlyView = false;
+        let isComparisonMode = false;
+
+        // Initial data from Week 38
+        allWeeksData[38] = {
+            weekNumber: 38,
+            dateRange: "Sept 15 to Sept 21",
+            hidden: false,
+            visits: {
+                Finkel: { total: 56, claims: 54, charges: 10223.08 },
+                Hayden: { total: 19, claims: 17, charges: 3217.06 },
+                Ryan: { total: 128, claims: 124, charges: 27068.11 },
+                Self: { total: 49, claims: 42, charges: 8155.35 },
+                West: { total: 90, claims: 79, charges: 14754.17 },
+                Jackson: { total: 50, claims: 43, charges: 8114.35 }
+            },
+            visitTypes: {
+                noShows: 12,
+                newPatient65: 31,
+                cancellations: 54,
+                annualVisit: 23,
+                ccmAwv: 33,
+                followUp: 286,
+                newPatient: 16,
+                nurseVisit: 3
+            },
+            patientAcquisition: {
+                inboundPhone: 969,
+                outboundPhone: 840,
+                incomingTexts: 112,
+                outgoingTexts: 229,
+                newPatients: 36
+            },
+            referrals: {
+                addressed: 31,
+                open: 22
+            },
+            faxesProcessed: 592,
+            totalCharges: 71532.12,
+            totalClaims: 359
+        };
+
+        // Initialize charts
+        let visitsChart, chargesChart, visitTypesChart;
+
+        // Utility Functions
+        function showLoading(text = 'Processing data...') {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = 'toast' + (isError ? ' error' : '');
+            toast.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${isError ? 'M6 18L18 6M6 6l12 12' : 'M5 13l4 4L19 7'}"></path>
+                    </svg>
+                    <span class="font-medium">${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function getCurrentData() {
+            return allWeeksData[currentWeekNumber] || allWeeksData[38];
+        }
+
+        function updateWeekSelector() {
+            const selector = document.getElementById('weekSelector');
+            selector.innerHTML = '';
+            
+            const weeks = Object.keys(allWeeksData)
+                .map(w => parseInt(w))
+                .filter(w => !hiddenWeeks.has(w))
+                .sort((a, b) => parseInt(b) - parseInt(a));
+            
+            if (weeks.length === 0) {
+                selector.innerHTML = '<option value="">No visible weeks</option>';
+                return;
+            }
+            
+            weeks.forEach(week => {
+                const option = document.createElement('option');
+                option.value = week;
+                option.textContent = `Week ${week}`;
+                if (parseInt(week) === currentWeekNumber) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        }
+
+        function updateComparisonSelectors() {
+            const weeks = Object.keys(allWeeksData)
+                .map(w => parseInt(w))
+                .filter(w => !hiddenWeeks.has(w))
+                .sort((a, b) => parseInt(b) - parseInt(a));
+            
+            ['compareWeek1', 'compareWeek2'].forEach(id => {
+                const selector = document.getElementById(id);
+                selector.innerHTML = '';
+                weeks.forEach((week, index) => {
+                    const option = document.createElement('option');
+                    option.value = week;
+                    option.textContent = `Week ${week}`;
+                    if ((id === 'compareWeek1' && index === 1) || (id === 'compareWeek2' && index === 0)) {
+                        option.selected = true;
+                    }
+                    selector.appendChild(option);
+                });
+            });
+        }
+
+        function changeWeek() {
+            const selector = document.getElementById('weekSelector');
+            currentWeekNumber = parseInt(selector.value);
+            isMonthlyView = false;
+            isComparisonMode = false;
+            updateDashboard();
+        }
+
+        function showMonthlyView() {
+            isMonthlyView = true;
+            isComparisonMode = false;
+            updateDashboard();
+        }
+
+        function toggleComparisonMode() {
+            const panel = document.getElementById('comparisonPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                updateComparisonSelectors();
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        function runComparison() {
+            const week1 = parseInt(document.getElementById('compareWeek1').value);
+            const week2 = parseInt(document.getElementById('compareWeek2').value);
+            
+            if (week1 === week2) {
+                showToast('Please select two different weeks to compare', true);
+                return;
+            }
+            
+            isComparisonMode = true;
+            isMonthlyView = false;
+            
+            // Build comparison view
+            showComparisonView(week1, week2);
+        }
+
+        function showComparisonView(week1, week2) {
+            const data1 = allWeeksData[week1];
+            const data2 = allWeeksData[week2];
+            
+            if (!data1 || !data2) {
+                showToast('Error loading week data', true);
+                return;
+            }
+            
+            document.getElementById('weekNumber').textContent = `Comparing Weeks ${week1} vs ${week2}`;
+            document.getElementById('dateRange').textContent = `${data1.dateRange} vs ${data2.dateRange}`;
+            
+            // Calculate differences
+            const totalVisits1 = Object.keys(data1.visits).reduce((sum, key) => sum + data1.visits[key].total, 0);
+            const totalVisits2 = Object.keys(data2.visits).reduce((sum, key) => sum + data2.visits[key].total, 0);
+            const visitsDiff = totalVisits2 - totalVisits1;
+            
+            const chargesDiff = data2.totalCharges - data1.totalCharges;
+            const newPatientsDiff = data2.patientAcquisition.newPatients - data1.patientAcquisition.newPatients;
+            const noShowsDiff = data2.visitTypes.noShows - data1.visitTypes.noShows;
+            
+            // Update KPIs with comparison
+            document.getElementById('totalVisits').textContent = `${totalVisits1} → ${totalVisits2}`;
+            document.getElementById('visitsTrend').innerHTML = `<span class="${visitsDiff >= 0 ? 'trend-up' : 'trend-down'}">${visitsDiff >= 0 ? '↑' : '↓'} ${Math.abs(visitsDiff)} (${((visitsDiff / totalVisits1) * 100).toFixed(1)}%)</span>`;
+            
+            document.getElementById('totalCharges').textContent = `$${data1.totalCharges.toLocaleString()} → $${data2.totalCharges.toLocaleString()}`;
+            document.getElementById('chargesTrend').innerHTML = `<span class="${chargesDiff >= 0 ? 'trend-up' : 'trend-down'}">${chargesDiff >= 0 ? '↑' : '↓'} $${Math.abs(chargesDiff).toLocaleString()} (${((chargesDiff / data1.totalCharges) * 100).toFixed(1)}%)</span>`;
+            
+            document.getElementById('newPatients').textContent = `${data1.patientAcquisition.newPatients} → ${data2.patientAcquisition.newPatients}`;
+            document.getElementById('newPatientsTrend').innerHTML = `<span class="${newPatientsDiff >= 0 ? 'trend-up' : 'trend-down'}">${newPatientsDiff >= 0 ? '↑' : '↓'} ${Math.abs(newPatientsDiff)}</span>`;
+            
+            document.getElementById('noShows').textContent = `${data1.visitTypes.noShows} → ${data2.visitTypes.noShows}`;
+            document.getElementById('noShowsTrend').innerHTML = `<span class="${noShowsDiff <= 0 ? 'trend-up' : 'trend-down'}">${noShowsDiff <= 0 ? '↓' : '↑'} ${Math.abs(noShowsDiff)}</span>`;
+            
+            // Update rest of dashboard with week2 data
+            updateDashboardDetails(data2);
+            updateCharts(data2);
+        }
+
+        function toggleManageWeeks() {
+            const panel = document.getElementById('manageWeeksPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                updateWeeksList();
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        function updateWeeksList() {
+            const weeksList = document.getElementById('weeksList');
+            weeksList.innerHTML = '';
+            
+            const weeks = Object.keys(allWeeksData).map(w => parseInt(w)).sort((a, b) => b - a);
+            
+            if (weeks.length === 0) {
+                weeksList.innerHTML = '<p class="text-gray-500 text-sm">No weeks loaded yet.</p>';
+                return;
+            }
+            
+            if (hiddenWeeks.size > 0) {
+                const showAllBtn = document.createElement('div');
+                showAllBtn.className = 'mb-3';
+                showAllBtn.innerHTML = `
+                    <button 
+                        onclick="showAllWeeks()" 
+                        class="w-full px-4 py-2.5 text-sm font-medium text-white rounded border-2 transition"
+                        style="background: var(--navy); border-color: var(--navy);">
+                        Show All Weeks (${hiddenWeeks.size} hidden)
+                    </button>
+                `;
+                weeksList.appendChild(showAllBtn);
+            }
+            
+            weeks.forEach(weekNum => {
+                const weekData = allWeeksData[weekNum];
+                const isHidden = hiddenWeeks.has(weekNum);
+                const weekItem = document.createElement('div');
+                weekItem.className = `flex items-center justify-between p-3 rounded border transition ${
+                    isHidden ? 'bg-gray-100 border-gray-300 opacity-60' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                }`;
+                weekItem.innerHTML = `
+                    <div>
+                        <p class="font-semibold ${isHidden ? 'text-gray-500' : ''}" style="color: ${isHidden ? '' : 'var(--navy)'};">
+                            Week ${weekNum} ${isHidden ? '(Hidden)' : ''}
+                        </p>
+                        <p class="text-sm" style="color: var(--gray);">${weekData.dateRange}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        ${isHidden ? `
+                            <button 
+                                onclick="showWeek(${weekNum})" 
+                                class="px-3 py-2 text-sm font-medium text-green-600 hover:bg-green-50 rounded border border-green-300 transition">
+                                Show
+                            </button>
+                        ` : `
+                            <button 
+                                onclick="hideWeek(${weekNum})" 
+                                class="px-3 py-2 text-sm font-medium text-orange-600 hover:bg-orange-50 rounded border border-orange-300 transition">
+                                Hide
+                            </button>
+                        `}
+                        <button 
+                            onclick="deleteWeek(${weekNum})" 
+                            class="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded border border-red-300 transition"
+                            ${weeks.length === 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                            ${weeks.length === 1 ? 'Last Week' : 'Delete'}
+                        </button>
+                    </div>
+                `;
+                weeksList.appendChild(weekItem);
+            });
+        }
+
+        function hideWeek(weekNum) {
+            hiddenWeeks.add(weekNum);
+            
+            if (currentWeekNumber === weekNum) {
+                const visibleWeeks = Object.keys(allWeeksData)
+                    .map(w => parseInt(w))
+                    .filter(w => !hiddenWeeks.has(w))
+                    .sort((a, b) => b - a);
+                
+                if (visibleWeeks.length > 0) {
+                    currentWeekNumber = visibleWeeks[0];
+                    isMonthlyView = false;
+                } else {
+                    showToast('All weeks are now hidden! Showing Week ' + weekNum + ' anyway.', true);
+                    hiddenWeeks.delete(weekNum);
+                    return;
+                }
+            }
+            
+            saveToLocalStorage();
+            updateWeekSelector();
+            updateWeeksList();
+            updateDashboard();
+            showToast(`Week ${weekNum} hidden`);
+        }
+
+        function showWeek(weekNum) {
+            hiddenWeeks.delete(weekNum);
+            saveToLocalStorage();
+            updateWeekSelector();
+            updateWeeksList();
+            updateDashboard();
+            showToast(`Week ${weekNum} is now visible`);
+        }
+
+        function showAllWeeks() {
+            hiddenWeeks.clear();
+            saveToLocalStorage();
+            updateWeekSelector();
+            updateWeeksList();
+            updateDashboard();
+            showToast('All weeks are now visible');
+        }
+
+        function deleteWeek(weekNum) {
+            if (Object.keys(allWeeksData).length === 1) {
+                showToast('Cannot delete the last week. Please keep at least one week loaded.', true);
+                return;
+            }
+            
+            if (confirm(`Are you sure you want to PERMANENTLY DELETE Week ${weekNum}?\n\nThis cannot be undone. Consider hiding it instead.`)) {
+                delete allWeeksData[weekNum];
+                hiddenWeeks.delete(weekNum);
+                
+                if (currentWeekNumber === weekNum) {
+                    const remainingWeeks = Object.keys(allWeeksData)
+                        .map(w => parseInt(w))
+                        .filter(w => !hiddenWeeks.has(w))
+                        .sort((a, b) => b - a);
+                    
+                    if (remainingWeeks.length > 0) {
+                        currentWeekNumber = remainingWeeks[0];
+                    } else {
+                        const allRemainingWeeks = Object.keys(allWeeksData).map(w => parseInt(w)).sort((a, b) => b - a);
+                        if (allRemainingWeeks.length > 0) {
+                            currentWeekNumber = allRemainingWeeks[0];
+                        }
+                    }
+                    isMonthlyView = false;
+                }
+                
+                saveToLocalStorage();
+                updateWeekSelector();
+                updateWeeksList();
+                updateDashboard();
+                showToast(`Week ${weekNum} permanently deleted`);
+            }
+        }
+
+        function aggregateMonthlyData() {
+            const weeks = Object.keys(allWeeksData)
+                .map(w => parseInt(w))
+                .filter(w => !hiddenWeeks.has(w))
+                .sort();
+            
+            if (weeks.length === 0) {
+                showToast('No visible weeks to aggregate!', true);
+                return null;
+            }
+            
+            const providers = ['Finkel', 'Hayden', 'Ryan', 'Self', 'West', 'Jackson'];
+            
+            const monthlyData = {
+                weekNumber: 'Monthly',
+                dateRange: `Weeks ${Math.min(...weeks)} - ${Math.max(...weeks)}`,
+                visits: {},
+                visitTypes: {
+                    noShows: 0,
+                    newPatient65: 0,
+                    cancellations: 0,
+                    annualVisit: 0,
+                    ccmAwv: 0,
+                    followUp: 0,
+                    newPatient: 0,
+                    nurseVisit: 0
+                },
+                patientAcquisition: {
+                    inboundPhone: 0,
+                    outboundPhone: 0,
+                    incomingTexts: 0,
+                    outgoingTexts: 0,
+                    newPatients: 0
+                },
+                referrals: {
+                    addressed: 0,
+                    open: 0
+                },
+                faxesProcessed: 0,
+                totalCharges: 0,
+                totalClaims: 0
+            };
+
+            providers.forEach(p => {
+                monthlyData.visits[p] = { total: 0, claims: 0, charges: 0 };
+            });
+
+            weeks.forEach(weekNum => {
+                const weekData = allWeeksData[weekNum];
+                
+                providers.forEach(p => {
+                    monthlyData.visits[p].total += weekData.visits[p].total;
+                    monthlyData.visits[p].claims += weekData.visits[p].claims;
+                    monthlyData.visits[p].charges += weekData.visits[p].charges;
+                });
+
+                Object.keys(monthlyData.visitTypes).forEach(key => {
+                    monthlyData.visitTypes[key] += weekData.visitTypes[key] || 0;
+                });
+
+                Object.keys(monthlyData.patientAcquisition).forEach(key => {
+                    monthlyData.patientAcquisition[key] += weekData.patientAcquisition[key] || 0;
+                });
+
+                monthlyData.referrals.addressed += weekData.referrals.addressed;
+                monthlyData.referrals.open += weekData.referrals.open;
+                monthlyData.faxesProcessed += weekData.faxesProcessed;
+                monthlyData.totalCharges += weekData.totalCharges;
+                monthlyData.totalClaims += weekData.totalClaims || 0;
+            });
+
+            return monthlyData;
+        }
+
+        function calculateTrends() {
+            const weeks = Object.keys(allWeeksData).map(w => parseInt(w)).sort();
+            const currentIndex = weeks.indexOf(currentWeekNumber);
+            
+            if (currentIndex === -1 || currentIndex === 0) return null;
+            
+            const currentData = allWeeksData[currentWeekNumber];
+            const previousWeek = weeks[currentIndex - 1];
+            const previousData = allWeeksData[previousWeek];
+            
+            const currentTotal = Object.keys(currentData.visits).reduce((sum, key) => sum + currentData.visits[key].total, 0);
+            const previousTotal = Object.keys(previousData.visits).reduce((sum, key) => sum + previousData.visits[key].total, 0);
+            
+            return {
+                visits: {
+                    change: currentTotal - previousTotal,
+                    percent: previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal * 100).toFixed(1) : 0
+                },
+                charges: {
+                    change: currentData.totalCharges - previousData.totalCharges,
+                    percent: previousData.totalCharges > 0 ? ((currentData.totalCharges - previousData.totalCharges) / previousData.totalCharges * 100).toFixed(1) : 0
+                },
+                newPatients: {
+                    change: currentData.patientAcquisition.newPatients - previousData.patientAcquisition.newPatients,
+                    percent: 0
+                },
+                noShows: {
+                    change: currentData.visitTypes.noShows - previousData.visitTypes.noShows,
+                    percent: 0
+                }
+            };
+        }
+
+        function updateDashboard() {
+            if (isComparisonMode) {
+                return; // Comparison view handles its own updates
+            }
+            
+            const dashboardData = isMonthlyView ? aggregateMonthlyData() : getCurrentData();
+            
+            if (!dashboardData) {
+                showToast('No visible weeks to display! Please show at least one week.', true);
+                isMonthlyView = false;
+                return;
+            }
+            
+            // Update header
+            document.getElementById('weekNumber').textContent = isMonthlyView ? 'Monthly Summary' : 'Week #' + dashboardData.weekNumber;
+            document.getElementById('dateRange').textContent = dashboardData.dateRange;
+            
+            // Update KPIs
+            const totalVisits = Object.keys(dashboardData.visits)
+                .reduce((sum, key) => sum + dashboardData.visits[key].total, 0);
+            
+            document.getElementById('totalVisits').textContent = totalVisits;
+            document.getElementById('totalCharges').textContent = '$' + dashboardData.totalCharges.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('newPatients').textContent = dashboardData.patientAcquisition.newPatients;
+            document.getElementById('noShows').textContent = dashboardData.visitTypes.noShows;
+
+            // Update trends
+            if (!isMonthlyView) {
+                const trends = calculateTrends();
+                if (trends) {
+                    document.getElementById('visitsTrend').innerHTML = trends.visits.change >= 0 
+                        ? `<span class="trend-up">↑ ${trends.visits.change} (${trends.visits.percent}%)</span>`
+                        : `<span class="trend-down">↓ ${Math.abs(trends.visits.change)} (${trends.visits.percent}%)</span>`;
+                    
+                    document.getElementById('chargesTrend').innerHTML = trends.charges.change >= 0
+                        ? `<span class="trend-up">↑ $${trends.charges.change.toLocaleString()} (${trends.charges.percent}%)</span>`
+                        : `<span class="trend-down">↓ $${Math.abs(trends.charges.change).toLocaleString()} (${trends.charges.percent}%)</span>`;
+                    
+                    document.getElementById('newPatientsTrend').innerHTML = trends.newPatients.change >= 0
+                        ? `<span class="trend-up">↑ ${trends.newPatients.change} vs last week</span>`
+                        : `<span class="trend-down">↓ ${Math.abs(trends.newPatients.change)} vs last week</span>`;
+                    
+                    document.getElementById('noShowsTrend').innerHTML = trends.noShows.change <= 0
+                        ? `<span class="trend-up">↓ ${Math.abs(trends.noShows.change)} vs last week</span>`
+                        : `<span class="trend-down">↑ ${trends.noShows.change} vs last week</span>`;
+                } else {
+                    document.getElementById('visitsTrend').textContent = '';
+                    document.getElementById('chargesTrend').textContent = '';
+                    document.getElementById('newPatientsTrend').textContent = '';
+                    document.getElementById('noShowsTrend').textContent = '';
+                }
+            } else {
+                const visibleWeeks = Object.keys(allWeeksData).filter(w => !hiddenWeeks.has(parseInt(w)));
+                const weekCount = visibleWeeks.length;
+                document.getElementById('visitsTrend').innerHTML = `<span style="color: var(--gray);">${weekCount} weeks aggregated</span>`;
+                document.getElementById('chargesTrend').innerHTML = `<span style="color: var(--gray);">Avg: $${(dashboardData.totalCharges / weekCount).toLocaleString()}/week</span>`;
+                document.getElementById('newPatientsTrend').innerHTML = `<span style="color: var(--gray);">Avg: ${Math.round(dashboardData.patientAcquisition.newPatients / weekCount)}/week</span>`;
+                document.getElementById('noShowsTrend').innerHTML = `<span style="color: var(--gray);">Avg: ${Math.round(dashboardData.visitTypes.noShows / weekCount)}/week</span>`;
+            }
+
+            updateDashboardDetails(dashboardData);
+            updateCharts(dashboardData);
+        }
+
+        function updateDashboardDetails(dashboardData) {
+            // Update patient acquisition
+            document.getElementById('inboundPhone').textContent = dashboardData.patientAcquisition.inboundPhone.toLocaleString();
+            document.getElementById('outboundPhone').textContent = dashboardData.patientAcquisition.outboundPhone.toLocaleString();
+            document.getElementById('incomingTexts').textContent = dashboardData.patientAcquisition.incomingTexts.toLocaleString();
+            document.getElementById('outgoingTexts').textContent = dashboardData.patientAcquisition.outgoingTexts.toLocaleString();
+            document.getElementById('newPatientAcq').textContent = dashboardData.patientAcquisition.newPatients.toLocaleString();
+
+            // Update referrals
+            document.getElementById('referralsAddressed').textContent = dashboardData.referrals.addressed;
+            document.getElementById('referralsOpen').textContent = dashboardData.referrals.open;
+            document.getElementById('referralsTotal').textContent = dashboardData.referrals.addressed + dashboardData.referrals.open;
+
+            // Update administrative
+            document.getElementById('totalClaims').textContent = dashboardData.totalClaims.toLocaleString();
+            document.getElementById('faxesProcessed').textContent = dashboardData.faxesProcessed.toLocaleString();
+            document.getElementById('cancellations').textContent = dashboardData.visitTypes.cancellations;
+
+            // Update visit types
+            document.getElementById('followUpVisits').textContent = dashboardData.visitTypes.followUp.toLocaleString();
+            document.getElementById('annualVisits').textContent = dashboardData.visitTypes.annualVisit;
+
+            // Update visits table
+            const tableBody = document.getElementById('visitsTableBody');
+            tableBody.innerHTML = '';
+            
+            const providers = ['Finkel', 'Hayden', 'Ryan', 'Self', 'West', 'Jackson'];
+            providers.forEach(provider => {
+                const data = dashboardData.visits[provider];
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 transition';
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-sm font-medium" style="color: var(--dark-gray);">${provider}</td>
+                    <td class="px-4 py-3 text-sm text-center" style="color: var(--dark-gray);">${data.total}</td>
+                    <td class="px-4 py-3 text-sm text-center" style="color: var(--dark-gray);">${data.claims}</td>
+                    <td class="px-4 py-3 text-sm text-right font-semibold text-green-600">$${data.charges.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            // Update visit types stats
+            const statsDiv = document.getElementById('visitTypesStats');
+            statsDiv.innerHTML = `
+                <div class="bg-blue-50 p-3 rounded border border-blue-200">
+                    <p class="text-xs uppercase font-semibold" style="color: var(--gray);">Follow-Up Visits</p>
+                    <p class="text-2xl font-bold" style="color: var(--navy);">${dashboardData.visitTypes.followUp}</p>
+                </div>
+                <div class="bg-green-50 p-3 rounded border border-green-200">
+                    <p class="text-xs uppercase font-semibold" style="color: var(--gray);">Annual Visits</p>
+                    <p class="text-2xl font-bold text-green-600">${dashboardData.visitTypes.annualVisit}</p>
+                </div>
+                <div class="bg-purple-50 p-3 rounded border border-purple-200">
+                    <p class="text-xs uppercase font-semibold" style="color: var(--gray);">New Patients</p>
+                    <p class="text-2xl font-bold text-purple-600">${dashboardData.patientAcquisition.newPatients}</p>
+                </div>
+                <div class="bg-orange-50 p-3 rounded border border-orange-200">
+                    <p class="text-xs uppercase font-semibold" style="color: var(--gray);">Nurse Visits</p>
+                    <p class="text-2xl font-bold text-orange-600">${dashboardData.visitTypes.nurseVisit}</p>
+                </div>
+            `;
+        }
+
+        function updateCharts(dashboardData) {
+            const providers = ['Finkel', 'Hayden', 'Ryan', 'Self', 'West', 'Jackson'];
+            const visitCounts = providers.map(p => dashboardData.visits[p].total);
+            const charges = providers.map(p => dashboardData.visits[p].charges);
+
+            // Visits by Provider Chart
+            const visitsCtx = document.getElementById('visitsChart').getContext('2d');
+            if (visitsChart) visitsChart.destroy();
+            visitsChart = new Chart(visitsCtx, {
+                type: 'bar',
+                data: {
+                    labels: providers,
+                    datasets: [{
+                        label: 'Visits',
+                        data: visitCounts,
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.85)',
+                            'rgba(16, 185, 129, 0.85)',
+                            'rgba(245, 158, 11, 0.85)',
+                            'rgba(139, 92, 246, 0.85)',
+                            'rgba(236, 72, 153, 0.85)',
+                            'rgba(20, 184, 166, 0.85)'
+                        ],
+                        borderColor: [
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(16, 185, 129, 1)',
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(139, 92, 246, 1)',
+                            'rgba(236, 72, 153, 1)',
+                            'rgba(20, 184, 166, 1)'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#f3f4f6',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#6b7280',
+                                font: { size: 11 }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#374151',
+                                font: { size: 12, weight: 500 }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            // Charges by Provider Chart
+            const chargesCtx = document.getElementById('chargesChart').getContext('2d');
+            if (chargesChart) chargesChart.destroy();
+            chargesChart = new Chart(chargesCtx, {
+                type: 'bar',
+                data: {
+                    labels: providers,
+                    datasets: [{
+                        label: 'Charges ($)',
+                        data: charges,
+                        backgroundColor: [
+                            'rgba(34, 197, 94, 0.85)',
+                            'rgba(59, 130, 246, 0.85)',
+                            'rgba(245, 158, 11, 0.85)',
+                            'rgba(168, 85, 247, 0.85)',
+                            'rgba(239, 68, 68, 0.85)',
+                            'rgba(6, 182, 212, 0.85)'
+                        ],
+                        borderColor: [
+                            'rgba(34, 197, 94, 1)',
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(168, 85, 247, 1)',
+                            'rgba(239, 68, 68, 1)',
+                            'rgba(6, 182, 212, 1)'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                },
+                                color: '#6b7280',
+                                font: { size: 11 }
+                            },
+                            grid: {
+                                color: '#f3f4f6',
+                                drawBorder: false
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#374151',
+                                font: { size: 12, weight: 500 }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            // Visit Types Chart
+            const visitTypesCtx = document.getElementById('visitTypesChart').getContext('2d');
+            if (visitTypesChart) visitTypesChart.destroy();
+            visitTypesChart = new Chart(visitTypesCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Follow-Up', 'Nurse Visit', 'Annual', 'New Patient', 'CCM AWV', '65+ New'],
+                    datasets: [{
+                        data: [
+                            dashboardData.visitTypes.followUp,
+                            dashboardData.visitTypes.nurseVisit,
+                            dashboardData.visitTypes.annualVisit,
+                            dashboardData.visitTypes.newPatient,
+                            dashboardData.visitTypes.ccmAwv,
+                            dashboardData.visitTypes.newPatient65
+                        ],
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.85)',
+                            'rgba(251, 146, 60, 0.85)',
+                            'rgba(34, 197, 94, 0.85)',
+                            'rgba(168, 85, 247, 0.85)',
+                            'rgba(236, 72, 153, 0.85)',
+                            'rgba(14, 165, 233, 0.85)'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                padding: 12,
+                                font: { size: 11 },
+                                color: '#374151'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // File upload and parsing functions
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showLoading('Processing file...');
+
+            const fileName = file.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+            const isCSV = fileName.endsWith('.csv');
+
+            if (!isExcel && !isCSV) {
+                hideLoading();
+                showToast('Please upload a CSV or Excel file (.csv, .xlsx, .xls)', true);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let newWeeksData;
+                    
+                    if (isExcel) {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        
+                        newWeeksData = {};
+                        workbook.SheetNames.forEach(sheetName => {
+                            const worksheet = workbook.Sheets[sheetName];
+                            const csvText = XLSX.utils.sheet_to_csv(worksheet);
+                            const sheetData = parseMultiWeekCSV(csvText);
+                            Object.assign(newWeeksData, sheetData);
+                        });
+                    } else {
+                        const text = e.target.result;
+                        newWeeksData = parseMultiWeekCSV(text);
+                    }
+                    
+                    let newWeeksCount = 0;
+                    let updatedWeeksCount = 0;
+                    
+                    Object.keys(newWeeksData).forEach(weekNum => {
+                        if (allWeeksData[weekNum]) {
+                            updatedWeeksCount++;
+                        } else {
+                            newWeeksCount++;
+                        }
+                        allWeeksData[weekNum] = newWeeksData[weekNum];
+                    });
+                    
+                    saveToLocalStorage();
+                    updateWeekSelector();
+                    isMonthlyView = false;
+                    isComparisonMode = false;
+                    
+                    const weeks = Object.keys(allWeeksData).map(w => parseInt(w));
+                    currentWeekNumber = Math.max(...weeks);
+                    
+                    hideLoading();
+                    updateDashboard();
+                    
+                    const totalWeeks = Object.keys(allWeeksData).length;
+                    showToast(`Upload successful! ${newWeeksCount} new weeks, ${updatedWeeksCount} updated. Total: ${totalWeeks} weeks`);
+                } catch (error) {
+                    console.error('Error parsing file:', error);
+                    hideLoading();
+                    showToast('Error parsing file: ' + error.message, true);
+                }
+            };
+            
+            if (isExcel) {
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.readAsText(file);
+            }
+        }
+
+        function parseMultiWeekCSV(csvText) {
+            const tempWeeksData = {};
+            
+            const lines = csvText.split('\n').map(line => {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                
+                for (let char of line) {
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                result.push(current.trim());
+                return result;
+            });
+
+            let weekSections = [];
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                for (let cell of line) {
+                    if (cell && cell.toUpperCase().includes('WEEK')) {
+                        const weekMatch = cell.match(/WEEK\s*#?\s*(\d+)/i);
+                        if (weekMatch) {
+                            weekSections.push({ startLine: i, weekNumber: parseInt(weekMatch[1]) });
+                        }
+                    }
+                }
+            }
+
+            weekSections.forEach((section, index) => {
+                const startLine = section.startLine;
+                const endLine = index < weekSections.length - 1 ? weekSections[index + 1].startLine : lines.length;
+                const sectionLines = lines.slice(startLine, endLine);
+                
+                const weekData = parseSingleWeekSection(sectionLines, section.weekNumber);
+                tempWeeksData[weekData.weekNumber] = weekData;
+            });
+            
+            return tempWeeksData;
+        }
+
+        function parseSingleWeekSection(lines, weekNum) {
+            console.log(`\n=== PARSING WEEK ${weekNum} ===`);
+            
+            const weekData = {
+                weekNumber: weekNum,
+                dateRange: "",
+                hidden: false,
+                visits: {
+                    Finkel: { total: 0, claims: 0, charges: 0 },
+                    Hayden: { total: 0, claims: 0, charges: 0 },
+                    Ryan: { total: 0, claims: 0, charges: 0 },
+                    Self: { total: 0, claims: 0, charges: 0 },
+                    West: { total: 0, claims: 0, charges: 0 },
+                    Jackson: { total: 0, claims: 0, charges: 0 }
+                },
+                visitTypes: {
+                    noShows: 0,
+                    newPatient65: 0,
+                    cancellations: 0,
+                    annualVisit: 0,
+                    ccmAwv: 0,
+                    followUp: 0,
+                    newPatient: 0,
+                    nurseVisit: 0
+                },
+                patientAcquisition: {
+                    inboundPhone: 0,
+                    outboundPhone: 0,
+                    incomingTexts: 0,
+                    outgoingTexts: 0,
+                    newPatients: 0
+                },
+                referrals: {
+                    addressed: 0,
+                    open: 0
+                },
+                faxesProcessed: 0,
+                totalCharges: 0,
+                totalClaims: 0
+            };
+
+            // Parse date range
+            for (let i = 0; i < Math.min(5, lines.length); i++) {
+                if (lines[i][1] && (lines[i][1].includes('to') || lines[i][1].includes('Week'))) {
+                    weekData.dateRange = lines[i][1].split('Week')[0].trim();
+                }
+            }
+
+            const providers = ['Finkel', 'Hayden', 'Ryan', 'Self', 'West', 'Jackson'];
+            let visitHeaderRow = -1;
+            
+            // Find visits section - this is Row 5 where provider names appear
+            for (let i = 0; i < lines.length; i++) {
+                const row = lines[i].map(cell => cell.toLowerCase());
+                if (row.includes('finkel')) {
+                    visitHeaderRow = i;
+                    console.log(`Found visit header row at line ${i}`);
+                    break;
+                }
+            }
+
+            // CRITICAL FIX: Parse No-Shows from the visit header row (Row 5)
+            if (visitHeaderRow >= 0) {
+                const headerRow = lines[visitHeaderRow];
+                console.log(`\nProcessing visit header row (Row ${visitHeaderRow}):`);
+                console.log(`  Column 12 (M): "${headerRow[12]}"`);
+                console.log(`  Column 13 (N): "${headerRow[13]}"`);
+                
+                // Check column M (index 12) for No-Shows label
+                if (headerRow[12]) {
+                    const label = headerRow[12].toLowerCase().replace(/[^a-z]/g, '');
+                    console.log(`  Cleaned label from col 12: "${label}"`);
+                    
+                    if (label.includes('noshow') || label.includes('notshow')) {
+                        weekData.visitTypes.noShows = parseInt(headerRow[13]) || 0;
+                        console.log(`  ✓ Found No-Shows: ${weekData.visitTypes.noShows}`);
+                    } else if (label.includes('cancellation')) {
+                        weekData.visitTypes.cancellations = parseInt(headerRow[13]) || 0;
+                        console.log(`  ✓ Found Cancellations: ${weekData.visitTypes.cancellations}`);
+                    } else if (label.includes('faxes')) {
+                        weekData.faxesProcessed = parseInt(headerRow[13]) || 0;
+                        console.log(`  ✓ Found Faxes: ${weekData.faxesProcessed}`);
+                    }
+                }
+                
+                // Parse visit type rows
+                for (let i = visitHeaderRow + 1; i < lines.length; i++) {
+                    const row = lines[i];
+                    
+                    // Also check subsequent rows for more administrative data
+                    if (row[12]) {
+                        const label = row[12].toLowerCase().replace(/[^a-z]/g, '');
+                        if (label.includes('cancellation') && !weekData.visitTypes.cancellations) {
+                            weekData.visitTypes.cancellations = parseInt(row[13]) || 0;
+                        } else if (label.includes('faxes') && !weekData.faxesProcessed) {
+                            weekData.faxesProcessed = parseInt(row[13]) || 0;
+                        } else if (label.includes('addressed')) {
+                            weekData.referrals.addressed = parseInt(row[13]) || 0;
+                        } else if (label.includes('open')) {
+                            weekData.referrals.open = parseInt(row[13]) || 0;
+                        }
+                    }
+                    
+                    if (!row[1]) continue;
+                    
+                    const visitType = row[1].toLowerCase();
+                    
+                    if (visitType.includes('65+') && visitType.includes('new')) {
+                        weekData.visitTypes.newPatient65 = parseInt(row[8]) || 0;
+                    } else if (visitType.includes('ann') || visitType.includes('annual')) {
+                        weekData.visitTypes.annualVisit = parseInt(row[8]) || 0;
+                    } else if (visitType.includes('ccm')) {
+                        weekData.visitTypes.ccmAwv = parseInt(row[8]) || 0;
+                    } else if (visitType.includes('f/u') || visitType.includes('follow')) {
+                        weekData.visitTypes.followUp = parseInt(row[8]) || 0;
+                    } else if (visitType.includes('np :') || (visitType.includes('new') && visitType.includes('patient') && !visitType.includes('65+'))) {
+                        weekData.visitTypes.newPatient = parseInt(row[8]) || 0;
+                    } else if (visitType.includes('nurse')) {
+                        weekData.visitTypes.nurseVisit = parseInt(row[8]) || 0;
+                    } else if (visitType.includes('total')) {
+                        for (let j = 0; j < providers.length; j++) {
+                            weekData.visits[providers[j]].total = parseInt(row[j + 2]) || 0;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Parse patient acquisition
+            let patientAcqSectionStart = -1;
+            for (let i = 0; i < lines.length; i++) {
+                const cellValue = lines[i][1] ? lines[i][1].toLowerCase() : '';
+                if (cellValue.includes('patient') && (cellValue.includes('adquisition') || cellValue.includes('acquisition'))) {
+                    patientAcqSectionStart = i;
+                    break;
+                }
+            }
+            
+            if (patientAcqSectionStart >= 0) {
+                for (let i = patientAcqSectionStart + 1; i < Math.min(patientAcqSectionStart + 10, lines.length); i++) {
+                    const cellValue = lines[i][1] ? lines[i][1].toLowerCase().trim() : '';
+                    if (cellValue === 'total') {
+                        const value = parseInt(lines[i][8]) || 0;
+                        weekData.patientAcquisition.newPatients = value;
+                        console.log(`Found new patients: ${value}`);
+                        break;
+                    }
+                }
+            }
+
+            // Parse phone and text data
+            for (let i = 0; i < lines.length; i++) {
+                const cellValue = lines[i][12] ? lines[i][12].toLowerCase() : '';
+                const value = parseInt(lines[i][13]) || 0;
+                
+                if (cellValue.includes('in-bound')) {
+                    weekData.patientAcquisition.inboundPhone = value;
+                } else if (cellValue.includes('out-bound')) {
+                    weekData.patientAcquisition.outboundPhone = value;
+                } else if (cellValue.includes('incoming text')) {
+                    weekData.patientAcquisition.incomingTexts = value;
+                } else if (cellValue.includes('texts - out')) {
+                    weekData.patientAcquisition.outgoingTexts = value;
+                }
+            }
+
+            // Parse claims and charges
+            let claimsDataRow = -1;
+            let chargesDataRow = -1;
+            
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i][1]) {
+                    const cellValue = lines[i][1].toLowerCase().trim();
+                    if (cellValue === 'claims' && lines[i][2] && !isNaN(parseInt(lines[i][2]))) {
+                        claimsDataRow = i;
+                    }
+                    if (cellValue === 'charges') {
+                        chargesDataRow = i;
+                    }
+                }
+            }
+
+            if (claimsDataRow > 0) {
+                for (let j = 0; j < providers.length; j++) {
+                    weekData.visits[providers[j]].claims = parseInt(lines[claimsDataRow][j + 2]) || 0;
+                }
+                const totalClaimsStr = lines[claimsDataRow][10] || lines[claimsDataRow][11];
+                if (totalClaimsStr) {
+                    weekData.totalClaims = parseInt(totalClaimsStr.replace(/[,$]/g, '')) || 0;
+                } else {
+                    weekData.totalClaims = providers.reduce((sum, p) => sum + weekData.visits[p].claims, 0);
+                }
+                console.log(`Total claims: ${weekData.totalClaims}`);
+            }
+            
+            if (chargesDataRow > 0) {
+                for (let j = 0; j < providers.length; j++) {
+                    const chargeStr = lines[chargesDataRow][j + 2];
+                    if (chargeStr) {
+                        const cleanedCharge = chargeStr.replace(/[$,]/g, '');
+                        weekData.visits[providers[j]].charges = parseFloat(cleanedCharge) || 0;
+                    }
+                }
+                
+                let totalChargeStr = lines[chargesDataRow][10];
+                if (!totalChargeStr || isNaN(parseFloat(totalChargeStr.replace(/[$,]/g, '')))) {
+                    weekData.totalCharges = providers.reduce((sum, p) => sum + weekData.visits[p].charges, 0);
+                } else {
+                    const cleanedTotal = totalChargeStr.replace(/[$,]/g, '');
+                    weekData.totalCharges = parseFloat(cleanedTotal) || 0;
+                }
+                console.log(`Total charges: $${weekData.totalCharges}`);
+            }
+
+            console.log(`\n=== WEEK ${weekNum} PARSING COMPLETE ===`);
+            console.log(`No-Shows: ${weekData.visitTypes.noShows}`);
+            console.log(`New Patients: ${weekData.patientAcquisition.newPatients}`);
+            console.log(`Total Claims: ${weekData.totalClaims}`);
+            console.log(`Total Charges: $${weekData.totalCharges}`);
+
+            return weekData;
+        }
+
+        // Export to Excel function
+        function exportToExcel() {
+            try {
+                const wb = XLSX.utils.book_new();
+                
+                // Get visible weeks
+                const visibleWeeks = Object.keys(allWeeksData)
+                    .map(w => parseInt(w))
+                    .filter(w => !hiddenWeeks.has(w))
+                    .sort((a, b) => a - b);
+                
+                if (visibleWeeks.length === 0) {
+                    showToast('No visible weeks to export', true);
+                    return;
+                }
+                
+                // Create summary sheet
+                const summaryData = [
+                    ['Trinova Medical - Dashboard Export'],
+                    [`Export Date: ${new Date().toLocaleDateString()}`],
+                    [`Weeks Included: ${visibleWeeks.join(', ')}`],
+                    [],
+                    ['Week', 'Date Range', 'Total Visits', 'Total Charges', 'New Patients', 'No-Shows', 'Total Claims']
+                ];
+                
+                visibleWeeks.forEach(weekNum => {
+                    const data = allWeeksData[weekNum];
+                    const totalVisits = Object.keys(data.visits).reduce((sum, key) => sum + data.visits[key].total, 0);
+                    summaryData.push([
+                        weekNum,
+                        data.dateRange,
+                        totalVisits,
+                        data.totalCharges,
+                        data.patientAcquisition.newPatients,
+                        data.visitTypes.noShows,
+                        data.totalClaims
+                    ]);
+                });
+                
+                const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+                XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+                
+                // Create detailed sheet for each week
+                visibleWeeks.forEach(weekNum => {
+                    const data = allWeeksData[weekNum];
+                    const providers = ['Finkel', 'Hayden', 'Ryan', 'Self', 'West', 'Jackson'];
+                    
+                    const weekData = [
+                        [`Week ${weekNum} - ${data.dateRange}`],
+                        [],
+                        ['Provider Performance'],
+                        ['Provider', 'Visits', 'Claims', 'Charges'],
+                        ...providers.map(p => [
+                            p,
+                            data.visits[p].total,
+                            data.visits[p].claims,
+                            data.visits[p].charges
+                        ]),
+                        [],
+                        ['Visit Types'],
+                        ['Type', 'Count'],
+                        ['Follow-Up', data.visitTypes.followUp],
+                        ['Annual', data.visitTypes.annualVisit],
+                        ['New Patient', data.visitTypes.newPatient],
+                        ['65+ New Patient', data.visitTypes.newPatient65],
+                        ['CCM AWV', data.visitTypes.ccmAwv],
+                        ['Nurse Visit', data.visitTypes.nurseVisit],
+                        ['No-Shows', data.visitTypes.noShows],
+                        ['Cancellations', data.visitTypes.cancellations],
+                        [],
+                        ['Patient Acquisition'],
+                        ['Metric', 'Count'],
+                        ['Inbound Phone', data.patientAcquisition.inboundPhone],
+                        ['Outbound Phone', data.patientAcquisition.outboundPhone],
+                        ['Incoming Texts', data.patientAcquisition.incomingTexts],
+                        ['Outgoing Texts', data.patientAcquisition.outgoingTexts],
+                        ['New Patients', data.patientAcquisition.newPatients],
+                        [],
+                        ['Administrative'],
+                        ['Metric', 'Count'],
+                        ['Total Claims', data.totalClaims],
+                        ['Faxes Processed', data.faxesProcessed],
+                        ['Referrals Addressed', data.referrals.addressed],
+                        ['Referrals Open', data.referrals.open]
+                    ];
+                    
+                    const ws = XLSX.utils.aoa_to_sheet(weekData);
+                    XLSX.utils.book_append_sheet(wb, ws, `Week ${weekNum}`);
+                });
+                
+                // Save file
+                XLSX.writeFile(wb, `Trinova_Dashboard_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+                showToast('Excel file exported successfully!');
+            } catch (error) {
+                console.error('Export error:', error);
+                showToast('Error exporting to Excel: ' + error.message, true);
+            }
+        }
+
+        // Provider rankings function
+        function showProviderRankings() {
+            const visibleWeeks = Object.keys(allWeeksData)
+                .map(w => parseInt(w))
+                .filter(w => !hiddenWeeks.has(w));
+            
+            if (visibleWeeks.length === 0) {
+                showToast('No visible weeks for rankings', true);
+                return;
+            }
+            
+            // Aggregate data across visible weeks
+            const providers = ['Finkel', 'Hayden', 'Ryan', 'Self', 'West', 'Jackson'];
+            const aggregated = {};
+            
+            providers.forEach(p => {
+                aggregated[p] = { visits: 0, charges: 0, claims: 0 };
+            });
+            
+            visibleWeeks.forEach(weekNum => {
+                const data = allWeeksData[weekNum];
+                providers.forEach(p => {
+                    aggregated[p].visits += data.visits[p].total;
+                    aggregated[p].charges += data.visits[p].charges;
+                    aggregated[p].claims += data.visits[p].claims;
+                });
+            });
+            
+            // Sort by visits
+            const rankedByVisits = Object.entries(aggregated)
+                .sort((a, b) => b[1].visits - a[1].visits);
+            
+            // Sort by charges
+            const rankedByCharges = Object.entries(aggregated)
+                .sort((a, b) => b[1].charges - a[1].charges);
+            
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold" style="color: var(--navy);">Provider Rankings</h2>
+                        <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-sm mb-6" style="color: var(--gray);">Based on ${visibleWeeks.length} visible weeks (Weeks ${Math.min(...visibleWeeks)} - ${Math.max(...visibleWeeks)})</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">By Total Visits</h3>
+                            <div class="space-y-3">
+                                ${rankedByVisits.map(([name, data], index) => `
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                                        <div class="flex items-center gap-3">
+                                            <span class="rank-badge ${index < 3 ? 'rank-' + (index + 1) : ''}" style="${index >= 3 ? 'background-color: #e5e7eb; color: #374151;' : ''}">${index + 1}</span>
+                                            <span class="font-medium" style="color: var(--dark-gray);">${name}</span>
+                                        </div>
+                                        <span class="font-bold text-lg" style="color: var(--navy);">${data.visits}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4" style="color: var(--dark-gray);">By Total Charges</h3>
+                            <div class="space-y-3">
+                                ${rankedByCharges.map(([name, data], index) => `
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                                        <div class="flex items-center gap-3">
+                                            <span class="rank-badge ${index < 3 ? 'rank-' + (index + 1) : ''}" style="${index >= 3 ? 'background-color: #e5e7eb; color: #374151;' : ''}">${index + 1}</span>
+                                            <span class="font-medium" style="color: var(--dark-gray);">${name}</span>
+                                        </div>
+                                        <span class="font-bold text-lg text-green-600">$${data.charges.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        // Print function
+        function printReport() {
+            window.print();
+        }
+
+        // LocalStorage functions
+        function saveToLocalStorage() {
+            try {
+                const dataToSave = {
+                    allWeeksData: allWeeksData,
+                    hiddenWeeks: Array.from(hiddenWeeks),
+                    currentWeekNumber: currentWeekNumber,
+                    timestamp: new Date().toISOString()
+                };
+                localStorage.setItem('trinovaWeeksData', JSON.stringify(dataToSave));
+                console.log('Data saved to localStorage');
+            } catch (error) {
+                console.error('Error saving to localStorage:', error);
+                showToast('Error saving data', true);
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const savedData = localStorage.getItem('trinovaWeeksData');
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    allWeeksData = parsed.allWeeksData || allWeeksData;
+                    hiddenWeeks = new Set(parsed.hiddenWeeks || []);
+                    currentWeekNumber = parsed.currentWeekNumber || currentWeekNumber;
+                    console.log('Data loaded from localStorage');
+                    return true;
+                }
+            } catch (error) {
+                console.error('Error loading from localStorage:', error);
+            }
+            return false;
+        }
+
+        function clearLocalStorage() {
+            if (confirm('Are you sure you want to clear all saved data? This cannot be undone.')) {
+                localStorage.removeItem('trinovaWeeksData');
+                location.reload();
+            }
+        }
+
+        // Initialize dashboard on load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFromLocalStorage();
+            updateWeekSelector();
+            updateDashboard();
+        });
+    </script>
+</body>
+</html>
